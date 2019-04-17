@@ -2,14 +2,14 @@ import tensorflow as tf
 import data_prepare
 from tensorflow.contrib import learn
 import numpy as np
-from paircnn_ranking import PairCNN_Ranking
+from dssm import dssm_model
 import config as config
 from tqdm import tqdm
 from sklearn.metrics import f1_score
 from sklearn import metrics
 import os
 
-con = config.Config()
+con = config.Config()  # 加载配置参数
 parent_path = os.path.dirname(os.getcwd())
 data_pre = data_prepare.Data_Prepare()
 
@@ -20,17 +20,21 @@ class TrainModel(object):
         保存模型
     '''
     def pre_processing(self):
+        # 1. 加载数据
         train_texta, train_textb, train_tag = data_pre.readfile(parent_path+'/data/train.txt')
         data = []
         data.extend(train_texta)
         data.extend(train_textb)
+        # 2. 生成词典
         data_pre.build_vocab(data, parent_path+'/save_model/dssm' + '/vocab.pickle')
-        # 加载词典
+        # 3. 加载词典
         self.vocab_processor = learn.preprocessing.VocabularyProcessor.restore(parent_path+'/save_model/dssm' +
                                                                                '/vocab.pickle')
+        # 4. query和doc都进行embedding
+        # 训练集
         train_texta_embedding = np.array(list(self.vocab_processor.transform(train_texta)))
         train_textb_embedding = np.array(list(self.vocab_processor.transform(train_textb)))
-
+        # 验证集
         dev_texta, dev_textb, dev_tag = data_pre.readfile(parent_path+'/data/dev.txt')
         dev_texta_embedding = np.array(list(self.vocab_processor.transform(dev_texta)))
         dev_textb_embedding = np.array(list(self.vocab_processor.transform(dev_textb)))
@@ -61,18 +65,16 @@ class TrainModel(object):
     def trainModel(self):
         train_texta_embedding, train_textb_embedding, train_tag, \
         dev_texta_embedding, dev_textb_embedding, dev_tag = self.pre_processing()
+
         # 定义训练用的循环神经网络模型
-        with tf.variable_scope('esim_model', reuse=None):
+        with tf.variable_scope('dssm_model', reuse=None):
             # dssm
-            model = PairCNN_Ranking.PairCNN(True, max_len=len(train_texta_embedding[0]),
-                                            vocab_size=len(self.vocab_processor.vocabulary_),
-                                            embedding_size=con.embedding_size,
-                                            filter_sizes=[5],
-                                            num_filters=100,
-                                            num_hidden=con.hidden_num,
-                                            l2_reg_lambda=con.l2_lambda,
-                                            k=con.K,
-                                            learning_rate=con.learning_rate)
+            model = dssm_model.DSSM(unigram_num=len(self.vocab_processor.vocabulary_),
+                                    maxsim_num=1,
+                                    unsim_num=4,
+                                    hidden_layer=[300, 300, 128],
+                                    is_normalize=True,
+                                    is_trainning=True)
 
         # 训练模型
         with tf.Session() as sess:
@@ -87,10 +89,10 @@ class TrainModel(object):
                 for texta, textb, tag in tqdm(
                         self.get_batches(train_texta_embedding, train_textb_embedding, train_tag)):
                     feed_dict = {
-                        model.text_a: texta,
-                        model.text_b: textb,
-                        model.y: tag,
-                        model.dropout_keep_prob: con.dropout_keep_prob
+                        model.query: texta,
+                        model.sim_text: textb,
+                        model.unsim_text: tag,
+                        model.sim_text_num: 1
                     }
                     _, cost, accuracy = sess.run([model.train_op, model.loss, model.accuracy], feed_dict)
                     loss_all.append(cost)

@@ -10,22 +10,22 @@ class Data_Prepare(object):
         texta = []
         textb = []
         tag = []
-        with open(filename, 'r') as f:
+        with open(filename, 'r', encoding="utf-8") as f:
             for line in f.readlines():
                 line = line.strip().split("\t")
-                texta.append(self.pre_processing(line[0]))
-                textb.append(self.pre_processing(line[1]))
-                tag.append(line[2])
+                texta.append(self.pre_processing(line[0]))  # 所有的query
+                textb.append(self.pre_processing(line[1]))  # 所有的doc
+                tag.append(line[2])  # 所有的tag
         # shuffle
         index = [x for x in range(len(texta))]
-        random.shuffle(index)
+        random.shuffle(index)  # 索引进行打乱
         texta_new = [texta[x] for x in index]
         textb_new = [textb[x] for x in index]
         tag_new = [tag[x] for x in index]
 
-        type = list(set(tag_new))
-        dicts = {}
-        tags_vec = []
+        type = list(set(tag_new))  # tag种类有几种
+        dicts = {}  # 统计每个tag取值的个数
+        tags_vec = []  # 将tag进行one-hot编码
         for x in tag_new:
             if x not in dicts.keys():
                 dicts[x] = 1
@@ -48,6 +48,7 @@ class Data_Prepare(object):
         words = [x for x in ''.join(words)]
         return ' '.join(words)
 
+    # 建立一个大的词典，将sentence都进行embeding,保存的是相应词在词典里的索引
     def build_vocab(self, sentences, path):
         lens = [len(sentence.split(" ")) for sentence in sentences]
         max_length = max(lens)
